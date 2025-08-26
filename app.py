@@ -10,7 +10,8 @@ load_dotenv()
 
 
 def create_app():
-    app = Flask(__name__)
+    gunicorn -w 2 -b 0.0.0.0:$PORT app:create_app()
+
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev_secret_key_change_me")
     app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
     app.config["DELIVERY_FEE"] = 5.00
