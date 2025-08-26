@@ -201,6 +201,7 @@ def create_app():
     return app
 
 
+# ⚡ Local development only
 if __name__ == "__main__":
     app = create_app()
     app.run(debug=True, port=5001)
