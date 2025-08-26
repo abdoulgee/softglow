@@ -1,33 +1,35 @@
 import os
+import requests   # ✅ use requests, not request
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash
-from datetime import timedelta
+from datetime import timedelta, datetime
 from products import PRODUCTS
 from dotenv import load_dotenv
-from datetime import datetime
 
 load_dotenv()
 
 
-
 def create_app():
-    gunicorn -w 2 -b 0.0.0.0:$PORT app:create_app()
+    app = Flask(__name__)
 
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev_secret_key_change_me")
     app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
     app.config["DELIVERY_FEE"] = 5.00
     app.config["CURRENCY"] = "usd"
+
     # Load your LIVE PayPal credentials
-    PAYPAL_CLIENT_ID = os.getenv("PAYPAL_CLIENT_ID", "YAZQ9qF7TIIm94-CLgZHWwo5SzKSriFVsj1pT4jN9c1hZ6kVXhusiQwLbas7fSRXARhsBJka4J5mK00oi")
-    PAYPAL_SECRET = os.getenv("PAYPAL_SECRET", "YEB-d7StEQM99EhEZOdZzxPyzK1g9HdSawMRI4HXA5jlglS9iLSs31zF4xYOwxmxFtg2N-poDdVM39KWA")
+    PAYPAL_CLIENT_ID = os.getenv("PAYPAL_CLIENT_ID", "")
+    PAYPAL_SECRET = os.getenv("PAYPAL_SECRET", "")
     PAYPAL_API_BASE = "https://api-m.paypal.com"   # sandbox: https://api-m.sandbox.paypal.com
+
     def get_paypal_access_token():
         """Get OAuth access token from PayPal"""
         auth = (PAYPAL_CLIENT_ID, PAYPAL_SECRET)
         headers = {"Accept": "application/json", "Accept-Language": "en_US"}
         data = {"grant_type": "client_credentials"}
-        r = request.post(f"{PAYPAL_API_BASE}/v1/oauth2/token", auth=auth, data=data, headers=headers)
+        r = requests.post(f"{PAYPAL_API_BASE}/v1/oauth2/token", auth=auth, data=data, headers=headers)
         r.raise_for_status()
         return r.json()["access_token"]
+
     @app.route("/paypal-success", methods=["POST"])
     def paypal_success():
         data = request.get_json()
@@ -38,21 +40,17 @@ def create_app():
         headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
 
         # Step 2: Verify order from PayPal
-        r = request.get(f"{PAYPAL_API_BASE}/v2/checkout/orders/{order_id}", headers=headers)
+        r = requests.get(f"{PAYPAL_API_BASE}/v2/checkout/orders/{order_id}", headers=headers)
         order_data = r.json()
 
         if order_data.get("status") == "COMPLETED":
             payer = order_data.get("payer", {})
             purchase_units = order_data.get("purchase_units", [])
 
-            # ✅ Handle order storage/email/DB updates here
-            #print(f"✅ PayPal Order Verified: {order_id}, Payer: {payer}")
-
             # ✅ Log to console and append to file
             log_message = f"✅ PayPal Order Verified: {order_id}, Payer: {payer}"
             print(log_message)
         
-        # Append to log file
             with open("paypal_orders.txt", "a") as file:
                 file.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {log_message}\n")
 
@@ -62,11 +60,9 @@ def create_app():
 
             return jsonify({"status": "success", "orderID": order_id})
         else:
-            # Log failed attempts
             with open("paypal_orders.txt", "a") as file:
                 file.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - ❌ Failed Order: {order_id}\n")
             return jsonify({"status": "failed", "orderID": order_id}), 400
-
 
     def get_cart_items():
         cart = session.get("cart", {})
@@ -86,9 +82,7 @@ def create_app():
 
     @app.context_processor
     def inject_globals():
-        return {
-            "DELIVERY_FEE": app.config["DELIVERY_FEE"]
-        }
+        return {"DELIVERY_FEE": app.config["DELIVERY_FEE"]}
 
     @app.before_request
     def make_session_permanent():
@@ -174,7 +168,6 @@ def create_app():
                 "city": city, "country": country, "phone": phone
             }
 
-            # ✅ Redirect user to thank you after PayPal completes (PayPal JS handles payment)
             return redirect(url_for("thankyou_contact"))
 
         return render_template("checkout.html",
@@ -196,8 +189,6 @@ def create_app():
         if "cart" not in session:
             session["cart"] = {}
         return jsonify(session.get("cart", {}))
-    
-    
 
     @app.route("/test-session")
     def test_session():
@@ -208,6 +199,7 @@ def create_app():
         return f"Session test value: {session['test']}"
 
     return app
+
 
 if __name__ == "__main__":
     app = create_app()
